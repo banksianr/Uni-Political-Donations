@@ -1,119 +1,12 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>University Political Donations Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css" />
+    <title>NASEM Political Donations Dashboard</title>
+    <script type="module" crossorigin src="/Uni-Political-Donations/assets/index-BYljdTSr.js"></script>
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero">
-        <div class="hero__eyebrow">GitHub Dashboard</div>
-        <h1 id="page-title">University Political Donations Dashboard</h1>
-        <p id="page-subtitle" class="hero__subtitle"></p>
-        <div class="hero__chips" id="methodology-notes"></div>
-      </header>
-
-      <main class="dashboard">
-        <section class="panel controls-panel">
-          <div>
-            <p class="panel__label">School Set</p>
-            <div class="toggle-row" id="subset-toggle"></div>
-          </div>
-          <div>
-            <p class="panel__label">Metric</p>
-            <div class="toggle-row" id="metric-toggle"></div>
-          </div>
-        </section>
-
-        <section class="stats-grid" id="stats-grid"></section>
-
-        <section class="panel chart-panel">
-          <div class="panel__header">
-            <div>
-              <p class="panel__label">Trend</p>
-              <h2 id="chart-title">Donations Over Time</h2>
-            </div>
-            <div class="legend">
-              <span class="legend__item"><span class="legend__swatch legend__swatch--dem"></span> DEM</span>
-              <span class="legend__item"><span class="legend__swatch legend__swatch--rep"></span> REP</span>
-            </div>
-          </div>
-          <div id="chart-root" class="chart-root"></div>
-        </section>
-
-        <section class="insights-grid">
-          <article class="panel insight-card">
-            <p class="panel__label">Insight</p>
-            <h3 id="insight-headline"></h3>
-            <p id="insight-body"></p>
-          </article>
-          <article class="panel insight-card">
-            <p class="panel__label">2024 Snapshot</p>
-            <h3 id="snapshot-headline"></h3>
-            <p id="snapshot-body"></p>
-          </article>
-        </section>
-
-        <section class="leaders-grid">
-          <article class="panel">
-            <div class="panel__header">
-              <div>
-                <p class="panel__label">All-Time Leaders</p>
-                <h2>Top Institutions by Dollars</h2>
-              </div>
-            </div>
-            <div class="leader-columns">
-              <div>
-                <h3 class="leader-columns__title">DEM</h3>
-                <ol id="leaders-dem" class="leader-list"></ol>
-              </div>
-              <div>
-                <h3 class="leader-columns__title">REP</h3>
-                <ol id="leaders-rep" class="leader-list"></ol>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="panel__header">
-              <div>
-                <p class="panel__label">2024 Leaders</p>
-                <h2>Top Institutions by Dollars</h2>
-              </div>
-            </div>
-            <div class="leader-columns">
-              <div>
-                <h3 class="leader-columns__title">DEM</h3>
-                <ol id="leaders-2024-dem" class="leader-list"></ol>
-              </div>
-              <div>
-                <h3 class="leader-columns__title">REP</h3>
-                <ol id="leaders-2024-rep" class="leader-list"></ol>
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <section class="panel downloads-panel">
-          <div class="panel__header">
-            <div>
-              <p class="panel__label">Downloads</p>
-              <h2>Raw Tables</h2>
-            </div>
-          </div>
-          <ul id="downloads-list" class="downloads-list"></ul>
-        </section>
-      </main>
-    </div>
-
-    <script src="./app.js" type="module"></script>
+    <div id="root"></div>
   </body>
-  </html>
+</html>
