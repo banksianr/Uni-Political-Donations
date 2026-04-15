@@ -21,10 +21,10 @@ This is the `NASEM-Donations` branch of the `banksianr/Uni-Political-Donations` 
 The published dashboard currently ships with:
 
 - `docs/data/nasem_fec_summary.csv`
-  - 100 summary rows
+  - 7,619 summary rows
   - One row per matched NASEM member in the current bundled dataset
 - `docs/data/nasem_fec_donations.csv`
-  - 20,667 donation rows
+  - 94,432 donation rows
   - Individual matched FEC contribution records
 - `docs/data/states-10m.json`
   - US state topology for the choropleth map

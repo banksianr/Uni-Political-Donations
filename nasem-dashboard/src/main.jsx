@@ -1061,6 +1061,31 @@ function normalizeDonationRows(rows) {
     .filter((row) => row && row.amount > 0);
 }
 
+function buildSummaryRowsFromDonations(rows) {
+  return _.orderBy(
+    Object.entries(_.groupBy(rows, "nasemName")).map(([name, donationRows]) => {
+      const first = donationRows[0] ?? {};
+      const highRows = donationRows.filter((row) => row.matchConfidence === "high");
+      return {
+        name,
+        clean_name: name,
+        academy: first.academy ?? "",
+        organization: first.nasemOrganization ?? "",
+        state: "",
+        has_fec_donations: "true",
+        total_donations: String(donationRows.length),
+        high_confidence_donations: String(highRows.length),
+        total_amount: String(_.sumBy(donationRows, "amount")),
+        high_confidence_amount: String(_.sumBy(highRows, "amount")),
+        profile_url: first.nasemProfile ?? "",
+        fec_search_link: buildFecSearchLink(name),
+      };
+    }),
+    [(row) => parseNumber(row.total_amount), (row) => row.name],
+    ["desc", "asc"],
+  );
+}
+
 function inferFileKind(rows) {
   const firstRow = rows[0];
   if (!firstRow) {
@@ -1080,6 +1105,17 @@ function inferFileKind(rows) {
     (headerSet.has("name") || headerSet.has("nasem_name"))
   ) {
     return "summary";
+  }
+  return null;
+}
+
+function inferFileKindFromName(fileName) {
+  const lower = String(fileName ?? "").toLowerCase();
+  if (lower.includes("summary")) {
+    return "summary";
+  }
+  if (lower.includes("donation")) {
+    return "donations";
   }
   return null;
 }
@@ -1261,9 +1297,9 @@ function UploadView({ onFilesSelected, onLoadBundled, message, canLoadBundled })
         </span>
         <h1 className="upload-title">NASEM Political Donations Dashboard</h1>
         <p className="upload-copy">
-          Drop the summary and donations CSVs here, or load the normalized bundled
-          dataset. The dashboard accepts both the dashboard contract files and the
-          legacy lookup exports already present in this folder.
+          Drop a donations CSV, or upload both summary and donations CSVs, or load
+          the normalized bundled dataset. The dashboard accepts both the dashboard
+          contract files and the legacy lookup exports already present in this folder.
         </p>
         <label
           className={`upload-dropzone ${isDragging ? "active" : ""}`}
@@ -1288,7 +1324,7 @@ function UploadView({ onFilesSelected, onLoadBundled, message, canLoadBundled })
           <Upload size={24} />
           <strong>Drop CSVs here or click to upload</strong>
           <span className="toolbar-copy">
-            Upload both files together so the dashboard can infer the pair.
+            A donations CSV alone is enough; summary data will be derived if needed.
           </span>
           <input
             ref={inputRef}
@@ -1296,7 +1332,10 @@ function UploadView({ onFilesSelected, onLoadBundled, message, canLoadBundled })
             type="file"
             accept=".csv,text/csv"
             multiple
-            onChange={(event) => readFiles(event.target.files)}
+            onChange={(event) => {
+              readFiles(event.target.files);
+              event.target.value = "";
+            }}
           />
         </label>
         <div className="upload-actions">
@@ -1528,7 +1567,7 @@ function App() {
       let summary = null;
       let donations = null;
       parsed.forEach((file) => {
-        const kind = inferFileKind(file.rows);
+        const kind = inferFileKind(file.rows) ?? inferFileKindFromName(file.name);
         if (kind === "summary") {
           summary = file.rows;
         }
@@ -1537,11 +1576,19 @@ function App() {
         }
       });
 
-      if (!summary || !donations) {
-        throw new Error("Both summary and donations CSVs are required.");
+      if (!donations) {
+        throw new Error("A donations CSV is required.");
       }
 
-      commitDataset(summary, donations, "Uploaded dataset");
+      const normalizedDonations = normalizeDonationRows(donations);
+      const summaryRows =
+        summary ?? buildSummaryRowsFromDonations(normalizedDonations);
+
+      commitDataset(
+        summaryRows,
+        donations,
+        summary ? "Uploaded dataset" : "Uploaded donations CSV",
+      );
     } catch (error) {
       setLoadState("needs-files");
       setStatusMessage(error.message);
@@ -2012,7 +2059,10 @@ function App() {
           type="file"
           accept=".csv,text/csv"
           multiple
-          onChange={(event) => handleUploadedFiles(Array.from(event.target.files ?? []))}
+          onChange={(event) => {
+            handleUploadedFiles(Array.from(event.target.files ?? []));
+            event.target.value = "";
+          }}
         />
       </div>
 
