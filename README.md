@@ -1,149 +1,122 @@
-# Uni Political Donations
+# NASEM Political Donations Dashboard
 
-This project measures political donations from people employed by leading US colleges and universities and turns the results into a static GitHub Pages dashboard.
+This branch publishes a GitHub Pages dashboard showing political donation patterns among living members of the National Academies of Sciences, Engineering, and Medicine using matched FEC individual contribution records.
 
-The current analysis focuses on presidential election cycles `2008`, `2012`, `2016`, `2020`, and `2024`, using FEC individual contribution files and a ranked school list based on the 2025 ranking source used in the pipeline. Totals are split between `DEM` and `REP` and include direct House, Senate, presidential, and party committees plus `ActBlue` and `WinRed`.
+Live site:
+[https://banksianr.github.io/Uni-Political-Donations/](https://banksianr.github.io/Uni-Political-Donations/)
 
-## What This Repo Does
+This is the `NASEM-Donations` branch of the `banksianr/Uni-Political-Donations` repository. It intentionally replaces the branch's `docs/` payload with the NASEM dashboard build. The original university-donations dashboard still lives in other branches/history; this branch is for the NASEM publication specifically.
 
-The repo has two jobs:
+## Branch Layout
 
-1. Scan large FEC individual contribution files and identify donations made by people whose `EMPLOYER` field matches a college or university in the selected school set.
-2. Package the results into a browser-based dashboard with trend charts, donor counts, leaderboard views, and downloadable CSVs.
+- `docs/`
+  - Published GitHub Pages artifact for this branch.
+  - GitHub Pages is configured to serve from `NASEM-Donations /docs`.
+- `nasem-dashboard/`
+  - React/Vite source used to build the published site.
+  - Includes the dashboard code, data-prep script, bundled CSVs, and the implementation plan.
 
-The latest dashboard is built from the output directory `outputs/local_presidential_with_2024_platforms/` and published from `docs/`.
+## Current Data Bundle
 
-## Current Snapshot
+The published dashboard currently ships with:
 
-For the top 150 ranked schools in the current output:
+- `docs/data/nasem_fec_summary.csv`
+  - 100 summary rows
+  - One row per matched NASEM member in the current bundled dataset
+- `docs/data/nasem_fec_donations.csv`
+  - 20,667 donation rows
+  - Individual matched FEC contribution records
+- `docs/data/states-10m.json`
+  - US state topology for the choropleth map
 
-| Cycle | DEM dollars | REP dollars | DEM donors | REP donors |
-| --- | ---: | ---: | ---: | ---: |
-| 2008 | $3.8M | $0.5M | 3,829 | 603 |
-| 2012 | $6.8M | $0.5M | 6,337 | 586 |
-| 2016 | $16.6M | $0.8M | 16,873 | 1,107 |
-| 2020 | $75.7M | $2.6M | 51,826 | 2,514 |
-| 2024 | $46.6M | $2.1M | 27,724 | 1,801 |
+The underlying NASEM member lists were scraped on `2026-04-14`, and the bundled dashboard data was normalized from the local lookup outputs for browser use.
 
-The dashboard also includes `Top 25` and `Top 10` school views.
+## What The Dashboard Contains
 
-## How It Works
+- FAI-styled single-page React dashboard
+- academy filter for `NAS`, `NAE`, and `NAM`
+- confidence filter for `All` versus `High only`
+- election-cycle filter across the bundled FEC records
+- KPI cards for searched members, identified donors, total dollars, and high-confidence dollars
+- charts for:
+  - donations over time by academy
+  - academy comparison across several metrics
+  - top committees
+  - top organizations
+  - contributor-state choropleth
+- searchable, sortable member detail table
 
-The analysis pipeline in [`scripts/college_donation_chart_local_presidential.py`](scripts/college_donation_chart_local_presidential.py) works like this:
+## Source Of Truth
 
-1. Detect presidential-cycle FEC individual contribution files in `Data/` such as `indiv08.zip`, `indiv12.zip`, `indiv16.zip`, `indiv20.zip`, and `indiv24.zip`. Extracted `Data/indivYY/itcont.txt` files are also supported.
-2. Load the ranked school list and build institution matching rules using canonical names plus a large alias table.
-3. Download and cache FEC committee master data so committee IDs can be resolved to party and committee type.
-4. Scan each `itcont.txt` row, read the contributor `EMPLOYER`, and match that employer string to a school.
-5. Keep only donations that resolve to `DEM` or `REP`, then aggregate totals by cycle, party, institution, and committee type.
-6. Deduplicate donors using normalized `name + city + state + ZIP5` so donor counts are not just raw contribution counts.
-7. Write summary CSVs and PNG charts for the top `150`, `25`, and `10` school sets.
+The editable source for this branch is:
 
-The GitHub Pages packaging step in [`scripts/build_dashboard.py`](scripts/build_dashboard.py) reads the latest output tables, converts them into [`docs/data/dashboard-data.json`](docs/data/dashboard-data.json), and copies the raw CSV downloads into `docs/data/`.
+- [`nasem-dashboard/src/main.jsx`](nasem-dashboard/src/main.jsx)
+- [`nasem-dashboard/vite.config.js`](nasem-dashboard/vite.config.js)
+- [`nasem-dashboard/scripts/prepare_dashboard_data.py`](nasem-dashboard/scripts/prepare_dashboard_data.py)
 
-The static frontend lives in:
+The published site is the built output in:
 
 - [`docs/index.html`](docs/index.html)
-- [`docs/app.js`](docs/app.js)
-- [`docs/styles.css`](docs/styles.css)
+- `docs/assets/*`
+- `docs/data/*`
 
-## Repository Layout
+Do not hand-edit the compiled JavaScript in `docs/assets/`. Make changes in `nasem-dashboard/`, rebuild, then copy the new `dist/` output into `docs/`.
 
-```text
-Data/
-  indiv08.zip, indiv12.zip, indiv16.zip, indiv20.zip, indiv24.zip
-  weball*.zip / weball*.txt
-scripts/
-  college_donation_chart.py
-  college_donation_chart_local_presidential.py
-  build_dashboard.py
-outputs/
-  local_presidential_with_2024_platforms/
-docs/
-  index.html
-  app.js
-  styles.css
-  data/
-README.md
-```
+## Local Build Workflow
 
-## Running The Analysis
-
-Install the Python dependencies used by the scripts:
+From the source workspace:
 
 ```bash
-python3 -m pip install pandas matplotlib requests beautifulsoup4
+cd nasem-dashboard
+npm install
+python3 scripts/prepare_dashboard_data.py
+npm run build
 ```
 
-Place the FEC individual contribution files in `Data/` with the expected names. The current pipeline was built around the presidential years already present in this repo.
-
-Run the local presidential-cycle analysis:
+That produces a fresh `dist/` directory. To update the published branch payload:
 
 ```bash
-python3 scripts/college_donation_chart_local_presidential.py \
-  --top-n 150 \
-  --cycles 2008 2012 2016 2020 2024 \
-  --output-dir outputs/local_presidential_with_2024_platforms
+rsync -a --delete dist/ ../docs/
+touch ../docs/.nojekyll
 ```
 
-That command writes:
-
-- `presidential_cycles_donations_by_cycle_party.csv`
-- `presidential_cycles_donations_by_institution_cycle_party.csv`
-- `presidential_cycles_donations_by_institution_party.csv`
-- `donor_counts_by_school_set_cycle_party.csv`
-- `top_150_line_summary.csv`, `top_25_line_summary.csv`, `top_10_line_summary.csv`
-- `top_150_donor_counts.csv`, `top_25_donor_counts.csv`, `top_10_donor_counts.csv`
-- matching PNG charts for each school set
-
-## Building The Dashboard
-
-Build the GitHub Pages payload from the latest output directory:
+Then commit and push the branch:
 
 ```bash
-python3 scripts/build_dashboard.py
+git add docs nasem-dashboard
+git commit -m "Update NASEM dashboard"
+git push origin NASEM-Donations
 ```
 
-Serve the dashboard locally:
+## GitHub Pages Configuration
 
-```bash
-python3 -m http.server 8000 -d docs
-```
+This branch is configured for GitHub Pages with:
 
-Then open `http://127.0.0.1:8000/`.
+- Branch: `NASEM-Donations`
+- Folder: `/docs`
 
-If you push this repo to GitHub, you can publish the dashboard directly from the `docs/` directory using GitHub Pages.
+If GitHub Pages is already enabled, pushing updated `docs/` contents to this branch is sufficient for a redeploy.
 
-## Dashboard Features
+## Data Provenance
 
-The dashboard currently includes:
+The source dashboard was built from a local NASEM/FEC matching workflow that:
 
-- a line chart over time by party
-- toggles for `Top 150`, `Top 25`, and `Top 10` schools
-- a metric toggle between donation dollars and unique donors
-- KPI cards for the latest cycle and the peak cycle
-- all-time and 2024 institution leaderboards by dollars
-- downloadable CSVs for the underlying tables
+1. Loads living member directories for `NAS`, `NAE`, and `NAM`.
+2. Cleans names and generates multiple surname variants for FEC matching.
+3. Searches local FEC bulk contribution files.
+4. Scores matches as `high` when employer confirmation is present and `medium` otherwise.
+5. Normalizes the output into the runtime CSV contract expected by the dashboard.
 
-## Methodology Notes
+Relevant source snapshot files in `nasem-dashboard/` include:
 
-- School cohorts are based on the 2025 ranking source parsed by the pipeline, not on a historical ranking for each election cycle.
-- Employer matching is conservative and alias-based. This reduces false positives but can still miss hospitals, labs, foundations, or department variants tied to a university.
-- Short aliases such as `RIT` and `UIC` are matched with token boundaries to avoid false hits like `RETIRED` or `PUBLIC`.
-- Donor counts are deduplicated by normalized `name + city + state + ZIP5`, which is a practical heuristic rather than a perfect person identifier.
-- Institution leaderboards in the dashboard are dollar-based because the current institution-level output does not include donor counts by school.
-- The current dashboard includes `ActBlue` and `WinRed`, but it is not a full measure of every PAC, joint fundraising committee, or conduit path in federal elections.
+- `DASHBOARD-PLAN.md`
+- `README.md`
+- `scripts/prepare_dashboard_data.py`
+- `public/data/nasem_fec_summary.csv`
+- `public/data/nasem_fec_donations.csv`
 
-## Important Caveats
+## Notes
 
-- This repo answers a narrow question: contributions attributable to people whose FEC `EMPLOYER` field matches a selected college or university.
-- FEC employer strings are self-reported and messy. Matching quality is good enough for directional analysis, but not perfect.
-- The `weball*.txt` files in `Data/` are bulk candidate/committee summary files, not the individual-level records used for the main dashboard.
-- The first run may need network access to fetch ranking metadata and committee master files unless they are already cached.
-
-## Main Files
-
-- [`scripts/college_donation_chart_local_presidential.py`](scripts/college_donation_chart_local_presidential.py): scans local FEC individual contribution files and writes the main analysis outputs
-- [`scripts/build_dashboard.py`](scripts/build_dashboard.py): packages the latest outputs for the static dashboard
-- [`docs/index.html`](docs/index.html): GitHub Pages entrypoint
-- [`outputs/local_presidential_with_2024_platforms`](outputs/local_presidential_with_2024_platforms): latest output used by the dashboard
+- This branch is publication-oriented: `docs/` is treated as a build artifact.
+- The current bundled dataset is a snapshot, not a live API-backed dashboard.
+- If you need to refresh the data, regenerate the normalized CSVs in `nasem-dashboard/public/data/`, rebuild, and republish `docs/`.
