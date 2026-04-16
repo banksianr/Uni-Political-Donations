@@ -24,12 +24,12 @@ The published dashboard currently ships with:
   - 7,619 summary rows
   - One row per matched NASEM member in the current bundled dataset
 - `docs/data/nasem_fec_donations.csv`
-  - 94,432 donation rows
-  - Individual matched FEC contribution records
+  - 76,675 normalized donation rows
+  - Individual contribution rows after deduplicating overlapping multi-academy and multi-search-variant matches
 - `docs/data/states-10m.json`
   - US state topology for the choropleth map
 
-The underlying NASEM member lists were scraped on `2026-04-14`, and the bundled dashboard data was normalized from the local lookup outputs for browser use.
+The underlying NASEM member lists were scraped on `2026-04-14`, and the bundled dashboard data was normalized from the current local lookup outputs for browser use. The source `outputs/nasem_fec_donations.csv` file used for this refresh contained 94,433 raw matched rows before the dashboard normalization step collapsed duplicate transaction matches.
 
 ## What The Dashboard Contains
 

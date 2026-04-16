@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import csv
+import json
+import re
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -9,6 +11,7 @@ from urllib.parse import quote_plus
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_SUMMARY = ROOT / "outputs" / "nasem_fec_summary.csv"
 SOURCE_DONATIONS = ROOT / "outputs" / "nasem_fec_donations.csv"
+COMMITTEE_LOOKUP = ROOT / "outputs" / "committee_lookup.json"
 MEMBER_DIRECTORY = ROOT / "nasem_living_members_nas_nae_nam_2026-04-14.csv"
 OUT_DIR = ROOT / "public" / "data"
 OUT_SUMMARY = OUT_DIR / "nasem_fec_summary.csv"
@@ -38,6 +41,8 @@ DONATION_FIELDS = [
     "contributor_employer",
     "committee_name",
     "committee_id",
+    "party",
+    "earmark_committee_id",
     "contribution_receipt_amount",
     "contribution_receipt_date",
     "two_year_transaction_period",
@@ -161,13 +166,72 @@ def normalize_summary_rows(
     return normalized
 
 
-def normalize_donation_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+def load_committee_lookup() -> dict[str, dict[str, str]]:
+    """Load the committee lookup JSON (party, name enrichment)."""
+    if COMMITTEE_LOOKUP.exists():
+        with open(COMMITTEE_LOOKUP, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+# Standard party code normalization
+PARTY_LABELS = {
+    "DEM": "DEM",
+    "REP": "REP",
+    "IND": "IND",
+    "LIB": "LIB",
+    "GRE": "GRE",
+    "DFL": "DEM",  # Minnesota Democratic-Farmer-Labor
+    "OTH": "OTH",
+}
+
+
+def normalize_party(party: str) -> str:
+    """Normalize party codes to standard labels."""
+    p = party.strip().upper()
+    return PARTY_LABELS.get(p, p if p else "")
+
+
+_EARMARK_RE = re.compile(r"\(C(\d{8})\)")
+
+
+def extract_earmark_committee_id(memo: str) -> str:
+    """Extract the target committee ID from an earmark memo field."""
+    m = _EARMARK_RE.search(memo)
+    return f"C{m.group(1)}" if m else ""
+
+
+def normalize_donation_rows(
+    rows: list[dict[str, str]],
+    committee_lookup: dict[str, dict[str, str]],
+) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     for row in rows:
         contributor_name = (row.get("contributor_name") or row.get("fec_name") or "").strip()
         nasem_name = (row.get("nasem_name") or "").strip()
         if not nasem_name or not contributor_name:
             continue
+
+        committee_id = (row.get("committee_id") or "").strip()
+        cmte_info = committee_lookup.get(committee_id, {})
+
+        # Extract earmark target from memo (e.g. "EARMARKED FOR BIDEN (C00703975)")
+        memo = (row.get("memo") or "").strip()
+        earmark_cid = extract_earmark_committee_id(memo)
+
+        # Use lookup to fill missing committee_name and party
+        committee_name = (row.get("committee_name") or "").strip()
+        if not committee_name:
+            committee_name = cmte_info.get("name", "")
+
+        party = (row.get("party") or "").strip()
+        if not party:
+            party = cmte_info.get("party", "")
+        # If party still missing and we have an earmark target, use its party
+        if not party and earmark_cid:
+            earmark_info = committee_lookup.get(earmark_cid, {})
+            party = earmark_info.get("party", "")
+        party = normalize_party(party)
 
         normalized.append(
             {
@@ -181,8 +245,10 @@ def normalize_donation_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
                 "contributor_employer": (
                     row.get("contributor_employer") or row.get("fec_employer") or ""
                 ).strip(),
-                "committee_name": (row.get("committee_name") or "").strip(),
-                "committee_id": (row.get("committee_id") or "").strip(),
+                "committee_name": committee_name,
+                "committee_id": committee_id,
+                "party": party,
+                "earmark_committee_id": earmark_cid,
                 "contribution_receipt_amount": format_money(
                     parse_float(
                         row.get("contribution_receipt_amount") or row.get("amount")
@@ -203,14 +269,46 @@ def normalize_donation_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             }
         )
 
-    normalized.sort(
+    # Deduplicate: same contributor + committee + date + amount = same transaction.
+    # Multi-academy members (e.g. D.E. Shaw in NAS+NAE) and duplicate search
+    # variants produce duplicate rows for the same real-world contribution.
+    # Keep one row per transaction, merging academies when needed.
+    seen: dict[tuple, int] = {}
+    deduped: list[dict[str, str]] = []
+    dupes_removed = 0
+    for row in normalized:
+        key = (
+            row["contributor_name"],
+            row["committee_id"],
+            row["contribution_receipt_date"],
+            row["contribution_receipt_amount"],
+        )
+        if key in seen:
+            dupes_removed += 1
+            # If the duplicate is from a different academy, note it
+            existing = deduped[seen[key]]
+            if row["academy"] and row["academy"] not in existing["academy"]:
+                existing["academy"] = ",".join(
+                    sorted(set(existing["academy"].split(",") + [row["academy"]]))
+                )
+            # Keep higher confidence if available
+            if row["match_confidence"] == "high" and existing["match_confidence"] != "high":
+                existing["match_confidence"] = "high"
+        else:
+            seen[key] = len(deduped)
+            deduped.append(row)
+
+    if dupes_removed:
+        print(f"  Deduplicated: removed {dupes_removed:,} duplicate transaction rows")
+
+    deduped.sort(
         key=lambda item: (
             item["two_year_transaction_period"],
             item["contribution_receipt_date"],
             item["nasem_name"],
         )
     )
-    return normalized
+    return deduped
 
 
 def main() -> None:
@@ -220,14 +318,18 @@ def main() -> None:
         raise FileNotFoundError(f"Missing donations CSV: {SOURCE_DONATIONS}")
 
     members = load_member_directory()
+    committee_lookup = load_committee_lookup()
     summary_rows = normalize_summary_rows(read_csv(SOURCE_SUMMARY), members)
-    donation_rows = normalize_donation_rows(read_csv(SOURCE_DONATIONS))
+    donation_rows = normalize_donation_rows(read_csv(SOURCE_DONATIONS), committee_lookup)
 
     write_csv(OUT_SUMMARY, SUMMARY_FIELDS, summary_rows)
     write_csv(OUT_DONATIONS, DONATION_FIELDS, donation_rows)
 
+    # Stats
+    party_count = sum(1 for r in donation_rows if r.get("party"))
     print(f"Wrote {len(summary_rows):,} summary rows to {OUT_SUMMARY}")
     print(f"Wrote {len(donation_rows):,} donation rows to {OUT_DONATIONS}")
+    print(f"  Party coverage: {party_count}/{len(donation_rows)} ({party_count/len(donation_rows)*100:.1f}%)")
 
 
 if __name__ == "__main__":

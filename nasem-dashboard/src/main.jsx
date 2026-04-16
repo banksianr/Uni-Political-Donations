@@ -16,6 +16,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   LabelList,
   Legend,
   ResponsiveContainer,
@@ -53,7 +54,48 @@ const ACADEMY_COLORS = {
   NAE: COLORS.blue,
   NAM: COLORS.yellow,
 };
+const PARTY_COLORS = {
+  DEM: "#4997D0",
+  REP: "#E04040",
+  OTH: "#D9D9D6",
+};
+const PARTY_ORDER = ["DEM", "REP", "OTH"];
+const PARTY_LABELS = { DEM: "Democrat", REP: "Republican", OTH: "Other / Unknown" };
 const ALL_COMMITTEE_CONDUITS = ["ACTBLUE", "WINRED"];
+const PRESIDENTIAL_CYCLES = ["2008", "2010", "2012", "2014", "2016", "2018", "2020", "2022", "2024", "2026"];
+const PRESIDENTIAL_ELECTION_CYCLES = ["2008", "2012", "2016", "2020", "2024"];
+const PRESIDENTIAL_CANDIDATES = {
+  // 2008
+  C00431445: { candidate: "Obama", cycle: "2008", party: "DEM" },
+  C00431569: { candidate: "McCain", cycle: "2008", party: "REP" },
+  // 2012
+  C00451393: { candidate: "Romney", cycle: "2012", party: "REP" },
+  C00418632: { candidate: "Obama", cycle: "2012", party: "DEM" },
+  // 2016
+  C00575795: { candidate: "Clinton", cycle: "2016", party: "DEM" },
+  C00494740: { candidate: "Clinton", cycle: "2016", party: "DEM" },
+  C00544288: { candidate: "Sanders", cycle: "2016", party: "DEM" },
+  C00586537: { candidate: "Biden", cycle: "2016", party: "DEM" },  // Biden 2016 exploratory
+  // 2020
+  C00703975: { candidate: "Biden", cycle: "2020", party: "DEM" },  // Biden for President (renamed later)
+  C00709410: { candidate: "Biden", cycle: "2020", party: "DEM" },  // Biden Victory Fund (initially)
+  C00582809: { candidate: "Sanders", cycle: "2020", party: "DEM" },
+  C00636571: { candidate: "Warren", cycle: "2020", party: "DEM" },
+  C00711564: { candidate: "Buttigieg", cycle: "2020", party: "DEM" },
+  C00696419: { candidate: "Klobuchar", cycle: "2020", party: "DEM" },
+  C00580100: { candidate: "Trump", cycle: "2020", party: "REP" },
+  C00618389: { candidate: "Trump", cycle: "2020", party: "REP" },
+  C00589820: { candidate: "O'Rourke", cycle: "2020", party: "DEM" },
+  // 2024
+  C00744946: { candidate: "Harris", cycle: "2024", party: "DEM" },  // Harris Victory Fund
+  C00838912: { candidate: "Harris", cycle: "2024", party: "DEM" },  // Harris Action Fund
+  C00770941: { candidate: "Trump", cycle: "2024", party: "REP" },
+  C00873893: { candidate: "Trump", cycle: "2024", party: "REP" },
+  C00828541: { candidate: "DeSantis", cycle: "2024", party: "REP" },
+};
+// C00703975 was Biden's committee through June 2024, then became Harris's.
+// Earmarked donations after 2024-07-01 targeting C00703975 are for Harris.
+const C00703975_HARRIS_CUTOVER = "2024-07-01";
 const PAGE_SIZE = 25;
 const DEFAULT_SORT = { key: "totalAmount", direction: "desc" };
 const BUNDLED_DATASET = {
@@ -827,6 +869,43 @@ const GLOBAL_STYLES = `
     gap: 8px;
   }
 
+  .party-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    padding: 3px 8px;
+    border: 1px solid currentColor;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .party-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 8px;
+  }
+
+  .party-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11px;
+    color: #6B6B6B;
+  }
+
+  .party-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 0;
+  }
+
   @media (max-width: 1200px) {
     .section-grid {
       grid-template-columns: 1fr;
@@ -1045,6 +1124,13 @@ function normalizeDonationRows(rows) {
         ).trim(),
         committeeName: String(row.committee_name ?? "").trim() || "Unspecified Committee",
         committeeId: String(row.committee_id ?? "").trim(),
+        earmarkCommitteeId: String(row.earmark_committee_id ?? "").trim(),
+        party: (() => {
+          const p = String(row.party ?? "").trim().toUpperCase();
+          if (p === "DEM" || p === "DFL") return "DEM";
+          if (p === "REP") return "REP";
+          return p || "";
+        })(),
         amount: parseNumber(
           row.contribution_receipt_amount ?? row.amount,
         ),
@@ -1221,6 +1307,69 @@ function ComparisonTooltip({ active, payload, academies = ACADEMY_ORDER }) {
         color: ACADEMY_COLORS[academy],
         label: academy,
         value: datum.formatter(datum[`${academy}Raw`]),
+      }))}
+    />
+  );
+}
+
+function PartyAreaTooltip({ active, label, payload }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <TooltipShell
+      label={`Cycle ${label}`}
+      rows={payload.map((item) => ({
+        key: item.dataKey,
+        color: PARTY_COLORS[item.dataKey] || item.stroke,
+        label: PARTY_LABELS[item.dataKey] || item.dataKey,
+        value: formatCurrency(item.value),
+      }))}
+    />
+  );
+}
+
+function PartyBarTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  return (
+    <TooltipShell
+      label={item.payload.label}
+      rows={[{
+        key: "amount",
+        color: PARTY_COLORS[item.payload.party] || COLORS.timberwolf,
+        label: PARTY_LABELS[item.payload.party] || "Total",
+        value: formatCurrency(item.value),
+      }]}
+    />
+  );
+}
+
+function CandidateTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  const d = item.payload;
+  return (
+    <TooltipShell
+      label={`${d.candidate} (${d.cycle})`}
+      rows={[{
+        key: "amount",
+        color: PARTY_COLORS[d.party] || COLORS.timberwolf,
+        label: PARTY_LABELS[d.party] || d.party,
+        value: formatCurrency(item.value),
+      }]}
+    />
+  );
+}
+
+function ConduitTooltip({ active, label, payload }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <TooltipShell
+      label={`${label} Cycle`}
+      rows={payload.map((item) => ({
+        key: item.dataKey,
+        color: item.dataKey === "ActBlue" ? PARTY_COLORS.DEM : PARTY_COLORS.REP,
+        label: item.dataKey,
+        value: formatCurrency(item.value),
       }))}
     />
   );
@@ -1806,11 +1955,17 @@ function App() {
     () =>
       _.orderBy(
         Object.entries(_.groupBy(chartCommitteesDonations, "committeeName")).map(
-          ([committeeName, rows]) => ({
-            committeeName: truncateLabel(committeeName, 35),
-            fullCommitteeName: committeeName,
-            amount: _.sumBy(rows, "amount"),
-          }),
+          ([committeeName, rows]) => {
+            const parties = _.countBy(rows, "party");
+            const dominant = Object.entries(parties).sort((a, b) => b[1] - a[1])[0];
+            const party = dominant ? dominant[0] : "";
+            return {
+              committeeName: truncateLabel(committeeName, 35),
+              fullCommitteeName: committeeName,
+              amount: _.sumBy(rows, "amount"),
+              party: party === "DEM" || party === "REP" ? party : "OTH",
+            };
+          },
         ),
         ["amount"],
         ["desc"],
@@ -1849,6 +2004,92 @@ function App() {
       ]),
     );
   }, [filteredDonations, mapMetric]);
+
+  const partyBreakdownData = useMemo(() => {
+    const buckets = { DEM: 0, REP: 0, OTH: 0 };
+    filteredDonations.forEach((row) => {
+      if (row.party === "DEM") buckets.DEM += row.amount;
+      else if (row.party === "REP") buckets.REP += row.amount;
+      else buckets.OTH += row.amount;
+    });
+    return PARTY_ORDER.map((party) => ({
+      party,
+      label: PARTY_LABELS[party],
+      amount: buckets[party],
+    }));
+  }, [filteredDonations]);
+
+  const partyOverTimeData = useMemo(() => {
+    const grouped = _.groupBy(donationsBase.filter((row) => row.cycle), "cycle");
+    return _.orderBy(
+      Object.entries(grouped).map(([cycle, rows]) => {
+        const dem = _.sumBy(rows.filter((r) => r.party === "DEM"), "amount");
+        const rep = _.sumBy(rows.filter((r) => r.party === "REP"), "amount");
+        const oth = _.sumBy(rows.filter((r) => r.party !== "DEM" && r.party !== "REP"), "amount");
+        return { cycle, DEM: dem, REP: rep, OTH: oth };
+      }),
+      [(row) => Number(row.cycle)],
+      ["asc"],
+    );
+  }, [donationsBase]);
+
+  const presidentialCandidateData = useMemo(() => {
+    const candidateTotals = {};
+    filteredDonations.forEach((row) => {
+      // Check earmark target first (for ActBlue/WinRed conduit donations),
+      // then fall back to direct committee_id
+      const earmarkId = row.earmarkCommitteeId || "";
+      const directId = row.committeeId;
+      let info = PRESIDENTIAL_CANDIDATES[earmarkId] || PRESIDENTIAL_CANDIDATES[directId];
+      if (!info) return;
+
+      // C00703975 was Biden's committee but transferred to Harris in July 2024.
+      // Use the donation date to attribute correctly.
+      if ((earmarkId === "C00703975" || directId === "C00703975") && info.candidate === "Biden") {
+        const date = row.date || "";
+        if (date >= C00703975_HARRIS_CUTOVER) {
+          info = { candidate: "Harris", cycle: "2024", party: "DEM" };
+        }
+      }
+
+      const key = `${info.candidate} (${info.cycle})`;
+      if (!candidateTotals[key]) {
+        candidateTotals[key] = {
+          candidate: info.candidate,
+          cycle: info.cycle,
+          party: info.party,
+          label: `${info.candidate} '${info.cycle.slice(2)}`,
+          amount: 0,
+        };
+      }
+      candidateTotals[key].amount += row.amount;
+    });
+    return _.orderBy(Object.values(candidateTotals), ["cycle", "amount"], ["asc", "desc"]);
+  }, [filteredDonations]);
+
+  const conduitData = useMemo(() => {
+    const ACTBLUE_ID = "C00401224";
+    const WINRED_ID = "C00694323";
+    const grouped = _.groupBy(
+      filteredDonations.filter(
+        (r) => r.committeeId === ACTBLUE_ID || r.committeeId === WINRED_ID,
+      ),
+      "cycle",
+    );
+    const cycles = _.orderBy(Object.keys(grouped), [(c) => Number(c)], ["asc"]);
+    return cycles.map((cycle) => {
+      const rows = grouped[cycle];
+      const ab = rows.filter((r) => r.committeeId === ACTBLUE_ID);
+      const wr = rows.filter((r) => r.committeeId === WINRED_ID);
+      return {
+        cycle,
+        ActBlue: _.sumBy(ab, "amount"),
+        WinRed: _.sumBy(wr, "amount"),
+        actblueCount: ab.length,
+        winredCount: wr.length,
+      };
+    });
+  }, [filteredDonations]);
 
   const searchableRows = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
@@ -2204,7 +2445,10 @@ function App() {
                         tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
                       />
                       <Tooltip content={<BarTooltip />} />
-                      <Bar dataKey="amount" name="Total $" fill={COLORS.orange} radius={[0, 2, 2, 0]}>
+                      <Bar dataKey="amount" name="Total $" radius={[0, 2, 2, 0]}>
+                        {topCommittees.map((entry, idx) => (
+                          <Cell key={idx} fill={PARTY_COLORS[entry.party] || COLORS.orange} />
+                        ))}
                         <LabelList
                           dataKey="amount"
                           position="right"
@@ -2287,6 +2531,157 @@ function App() {
                 />
               </ChartCard>
             </div>
+          </div>
+        </section>
+
+        <section className="section-block">
+          <div className="section-header">
+            <h2 className="section-title">Political Destination</h2>
+          </div>
+
+          <div className="section-grid">
+            <ChartCard
+              title="Donations by Party"
+              subtitle="Total matched contributions grouped by recipient party affiliation."
+            >
+              {partyBreakdownData.length ? (
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={partyBreakdownData} layout="vertical" margin={{ left: 8, right: 48 }}>
+                      <CartesianGrid stroke={COLORS.timberwolf} strokeDasharray="3 3" opacity={0.5} />
+                      <XAxis
+                        type="number"
+                        tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                        tickFormatter={(value) => formatCompactCurrency(value)}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="label"
+                        width={130}
+                        tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                      />
+                      <Tooltip content={<PartyBarTooltip />} />
+                      <Bar dataKey="amount" name="Total $" radius={[0, 2, 2, 0]}>
+                        {partyBreakdownData.map((entry) => (
+                          <Cell key={entry.party} fill={PARTY_COLORS[entry.party]} />
+                        ))}
+                        <LabelList
+                          dataKey="amount"
+                          position="right"
+                          formatter={(value) => formatCurrency(value)}
+                          style={{ fill: COLORS.codGray, fontSize: 11, fontFamily: "IBM Plex Serif" }}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyPanel copy="No donation records match the current filters." />
+              )}
+            </ChartCard>
+
+            <ChartCard
+              title="Party Donations Over Time"
+              subtitle="Stacked area view of contribution amounts by party affiliation across election cycles."
+            >
+              {partyOverTimeData.length ? (
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={partyOverTimeData}>
+                      <CartesianGrid stroke={COLORS.timberwolf} strokeDasharray="3 3" opacity={0.5} />
+                      <XAxis dataKey="cycle" tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }} />
+                      <YAxis
+                        tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                        tickFormatter={(value) => formatCompactCurrency(value)}
+                      />
+                      <Tooltip content={<PartyAreaTooltip />} />
+                      <Legend
+                        wrapperStyle={{ fontFamily: "IBM Plex Sans", fontSize: 11 }}
+                        formatter={(value) => PARTY_LABELS[value] || value}
+                      />
+                      <Area type="monotone" dataKey="DEM" name="DEM" stackId="party" stroke={PARTY_COLORS.DEM} fill={PARTY_COLORS.DEM} fillOpacity={0.3} />
+                      <Area type="monotone" dataKey="REP" name="REP" stackId="party" stroke={PARTY_COLORS.REP} fill={PARTY_COLORS.REP} fillOpacity={0.3} />
+                      <Area type="monotone" dataKey="OTH" name="OTH" stackId="party" stroke={PARTY_COLORS.OTH} fill={PARTY_COLORS.OTH} fillOpacity={0.3} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyPanel copy="No donation records match the current filters." />
+              )}
+            </ChartCard>
+
+            <div className="full-width">
+              <ChartCard
+                title="Presidential Candidate Donations"
+                subtitle="Matched donations to identified presidential candidate committees, grouped by election cycle."
+              >
+                {presidentialCandidateData.length ? (
+                  <div className="chart-shell" style={{ height: Math.max(320, presidentialCandidateData.length * 36) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={presidentialCandidateData} layout="vertical" margin={{ left: 8, right: 48 }}>
+                        <CartesianGrid stroke={COLORS.timberwolf} strokeDasharray="3 3" opacity={0.5} />
+                        <XAxis
+                          type="number"
+                          tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                          tickFormatter={(value) => formatCompactCurrency(value)}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="label"
+                          width={130}
+                          tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                        />
+                        <Tooltip content={<CandidateTooltip />} />
+                        <Bar dataKey="amount" name="Total $" radius={[0, 2, 2, 0]}>
+                          {presidentialCandidateData.map((entry, idx) => (
+                            <Cell key={idx} fill={PARTY_COLORS[entry.party] || COLORS.timberwolf} />
+                          ))}
+                          <LabelList
+                            dataKey="amount"
+                            position="right"
+                            formatter={(value) => formatCurrency(value)}
+                            style={{ fill: COLORS.codGray, fontSize: 11, fontFamily: "IBM Plex Serif" }}
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <EmptyPanel copy="No presidential candidate donations found under the current filters." />
+                )}
+              </ChartCard>
+            </div>
+
+            <ChartCard
+              title="ActBlue vs WinRed"
+              subtitle="Donations routed through the two major online fundraising conduits, by election cycle."
+            >
+              {conduitData.length ? (
+                <div className="chart-shell" style={{ height: 340 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={conduitData} margin={{ left: 8, right: 48 }}>
+                      <CartesianGrid stroke={COLORS.timberwolf} strokeDasharray="3 3" opacity={0.5} />
+                      <XAxis
+                        dataKey="cycle"
+                        tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                      />
+                      <YAxis
+                        tick={{ fill: "#6B6B6B", fontSize: 10, fontFamily: "IBM Plex Sans" }}
+                        tickFormatter={(value) => formatCompactCurrency(value)}
+                      />
+                      <Tooltip content={<ConduitTooltip />} />
+                      <Legend
+                        wrapperStyle={{ fontFamily: "IBM Plex Sans", fontSize: 11 }}
+                      />
+                      <Bar dataKey="ActBlue" name="ActBlue" fill={PARTY_COLORS.DEM} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="WinRed" name="WinRed" fill={PARTY_COLORS.REP} radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyPanel copy="No conduit donations found under the current filters." />
+              )}
+            </ChartCard>
           </div>
         </section>
 
@@ -2450,6 +2845,10 @@ function App() {
             <p className="footer-copy">
               Source: FEC Schedule A individual contributions · Data: NASEM member
               directories, scraped 2026-04-14 · Active dataset: {datasetLabel}
+            </p>
+            <p className="footer-copy">
+              Data available upon request · Based on publicly available information
+              from the FEC and NASEM
             </p>
           </div>
           <div className="brand-lockup">
