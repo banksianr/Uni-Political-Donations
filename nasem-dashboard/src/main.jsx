@@ -61,6 +61,33 @@ const PARTY_COLORS = {
 };
 const PARTY_ORDER = ["DEM", "REP", "OTH"];
 const PARTY_LABELS = { DEM: "Democrat", REP: "Republican", OTH: "Other / Unknown" };
+const DONOR_LABEL_METHOD = [
+  {
+    step: "1. Aggregate by donor and cycle",
+    copy:
+      "Treat each donor-cycle as the unit of analysis by summing all matched itemized contributions inside the same two-year election cycle.",
+  },
+  {
+    step: "2. Resolve the political recipient",
+    copy:
+      "Use the recorded recipient committee on the FEC record. When an earmark target is identified, use that target for candidate-specific classification and for party assignment when available.",
+  },
+  {
+    step: "3. Label each recipient committee",
+    copy:
+      "Assign each committee to Democrat, Republican, or Other based on official committee or candidate party where available. Conduits such as ActBlue map to Democrat and WinRed maps to Republican unless a better earmark target is available.",
+  },
+  {
+    step: "4. Sum dollars by party bucket",
+    copy:
+      "For each donor-cycle, total the dollars going to Democrat, Republican, and Other recipients. Use dollars, not raw contribution counts, as the primary weighting variable.",
+  },
+  {
+    step: "5. Apply a transparent decision rule",
+    copy:
+      "Label the donor-cycle Democrat when Democratic dollars are at least two-thirds of identifiable partisan dollars and at least double Republican dollars. Label it Republican under the mirror rule. Put mixed, bipartisan, nonpartisan, corporate or trade-association, and unresolved patterns into Other / corporate.",
+  },
+];
 const ALL_COMMITTEE_CONDUITS = ["ACTBLUE", "WINRED"];
 const PRESIDENTIAL_CYCLES = ["2008", "2010", "2012", "2014", "2016", "2018", "2020", "2022", "2024", "2026"];
 const PRESIDENTIAL_ELECTION_CYCLES = ["2008", "2012", "2016", "2020", "2024"];
@@ -906,6 +933,170 @@ const GLOBAL_STYLES = `
     border-radius: 0;
   }
 
+  .methodology-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .methodology-item {
+    border-top: 1px solid ${COLORS.timberwolf};
+    padding-top: 14px;
+  }
+
+  .methodology-item:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .methodology-step {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: ${COLORS.orange};
+    margin: 0 0 6px;
+  }
+
+  .methodology-copy {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12px;
+    line-height: 1.6;
+    color: ${COLORS.codGray};
+    margin: 0;
+  }
+
+  .methodology-note {
+    margin: 2px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid ${COLORS.timberwolf};
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #6B6B6B;
+  }
+
+  .recipient-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .recipient-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+    border-top: 1px solid ${COLORS.timberwolf};
+    padding-top: 12px;
+  }
+
+  .recipient-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .recipient-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    border: 1px solid ${COLORS.timberwolf};
+    background: #F8F8F6;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: ${COLORS.codGray};
+  }
+
+  .recipient-head {
+    flex: 1 1 280px;
+    min-width: 220px;
+  }
+
+  .recipient-name {
+    font-family: "IBM Plex Serif", serif;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: ${COLORS.codGray};
+    margin: 0 0 4px;
+  }
+
+  .recipient-meta,
+  .recipient-type {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #6B6B6B;
+    margin: 0;
+  }
+
+  .recipient-type {
+    min-width: 150px;
+    padding-top: 2px;
+  }
+
+  .recipient-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 108px;
+    padding: 6px 10px;
+    border: 1px solid currentColor;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: transparent;
+  }
+
+  .recipient-badge.party-dem {
+    color: ${PARTY_COLORS.DEM};
+  }
+
+  .recipient-badge.party-rep {
+    color: ${PARTY_COLORS.REP};
+  }
+
+  .recipient-badge.party-oth {
+    color: #6B6B6B;
+  }
+
+  .recipient-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-left: auto;
+  }
+
+  .recipient-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    min-width: 76px;
+  }
+
+  .recipient-metric-label {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #6B6B6B;
+  }
+
+  .recipient-metric-value {
+    font-family: "IBM Plex Serif", serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: ${COLORS.codGray};
+  }
+
   @media (max-width: 1200px) {
     .section-grid {
       grid-template-columns: 1fr;
@@ -932,7 +1123,8 @@ const GLOBAL_STYLES = `
     .footer-inner,
     .filter-inner,
     .table-controls,
-    .table-footer {
+    .table-footer,
+    .recipient-metrics {
       flex-direction: column;
       align-items: flex-start;
     }
@@ -1051,9 +1243,69 @@ function tokenizeSearchText(value) {
     .filter(Boolean);
 }
 
+function normalizePartyBucket(value) {
+  const party = String(value ?? "").trim().toUpperCase();
+  if (party === "DEM" || party === "DFL") return "DEM";
+  if (party === "REP") return "REP";
+  return "OTH";
+}
+
 function isConduitCommittee(name) {
   const upper = String(name ?? "").toUpperCase();
   return ALL_COMMITTEE_CONDUITS.some((needle) => upper.includes(needle));
+}
+
+function inferRecipientType(committeeName, committeeId = "") {
+  const upper = String(committeeName ?? "").trim().toUpperCase();
+  if (!upper || upper === "UNKNOWN" || upper === "UNSPECIFIED COMMITTEE") {
+    return "Unknown / unresolved";
+  }
+  if (isConduitCommittee(upper)) {
+    return "Conduit";
+  }
+  if (
+    upper.includes("VICTORY FUND") ||
+    upper.includes("JOINT FUNDRAISING") ||
+    upper.endsWith(" JFC") ||
+    upper.includes(" JOINT ")
+  ) {
+    return "Joint fundraising";
+  }
+  if (
+    upper === "DCCC" ||
+    upper === "DSCC" ||
+    upper === "NRCC" ||
+    upper === "NRSC" ||
+    upper.includes("NATIONAL COMMITTEE") ||
+    upper.includes("SENATORIAL COMMITTEE") ||
+    upper.includes("CONGRESSIONAL COMMITTEE")
+  ) {
+    return "Party committee";
+  }
+  if (
+    upper.startsWith("FRIENDS OF ") ||
+    upper.includes(" FOR PRESIDENT") ||
+    upper.includes(" FOR SENATE") ||
+    upper.includes(" FOR CONGRESS") ||
+    upper.includes(" FOR GOVERNOR") ||
+    upper.includes(" COMMITTEE TO ELECT ") ||
+    upper.includes(" RE-ELECT ") ||
+    upper.endsWith(" FOR AMERICA") ||
+    (committeeId && PRESIDENTIAL_CANDIDATES[committeeId])
+  ) {
+    return "Candidate campaign";
+  }
+  if (
+    upper.includes(" PAC") ||
+    upper.startsWith("PAC ") ||
+    upper.includes("ACTION") ||
+    upper.includes("LEADERSHIP") ||
+    upper.includes("SUPER PAC") ||
+    upper.includes("FUND")
+  ) {
+    return "PAC / advocacy";
+  }
+  return "Other committee";
 }
 
 function parseCsvText(text) {
@@ -1133,12 +1385,7 @@ function normalizeDonationRows(rows) {
         committeeName: String(row.committee_name ?? "").trim() || "Unspecified Committee",
         committeeId: String(row.committee_id ?? "").trim(),
         earmarkCommitteeId: String(row.earmark_committee_id ?? "").trim(),
-        party: (() => {
-          const p = String(row.party ?? "").trim().toUpperCase();
-          if (p === "DEM" || p === "DFL") return "DEM";
-          if (p === "REP") return "REP";
-          return p || "";
-        })(),
+        party: normalizePartyBucket(row.party),
         amount: parseNumber(
           row.contribution_receipt_amount ?? row.amount,
         ),
@@ -1964,9 +2211,9 @@ function App() {
       _.orderBy(
         Object.entries(_.groupBy(chartCommitteesDonations, "committeeName")).map(
           ([committeeName, rows]) => {
-            const parties = _.countBy(rows, "party");
+            const parties = _.countBy(rows, (row) => normalizePartyBucket(row.party));
             const dominant = Object.entries(parties).sort((a, b) => b[1] - a[1])[0];
-            const party = dominant ? dominant[0] : "";
+            const party = dominant ? dominant[0] : "OTH";
             return {
               committeeName: truncateLabel(committeeName, 35),
               fullCommitteeName: committeeName,
@@ -1980,6 +2227,40 @@ function App() {
       ).slice(0, 10),
     [chartCommitteesDonations],
   );
+
+  const topRecipientList = useMemo(() => {
+    const totalAmount = _.sumBy(chartCommitteesDonations, "amount");
+    return _.orderBy(
+      Object.entries(_.groupBy(chartCommitteesDonations, "committeeName"))
+        .map(([committeeName, rows]) => {
+          const partyTotals = { DEM: 0, REP: 0, OTH: 0 };
+          rows.forEach((row) => {
+            partyTotals[normalizePartyBucket(row.party)] += row.amount;
+          });
+          const party =
+            _.maxBy(PARTY_ORDER, (code) => partyTotals[code] ?? 0) || "OTH";
+          const amount = _.sumBy(rows, "amount");
+          const first = rows[0] ?? {};
+          return {
+            committeeName,
+            recipientType: inferRecipientType(committeeName, first.committeeId),
+            party,
+            amount,
+            count: rows.length,
+            donorCount: _.uniq(rows.map((row) => row.nasemName)).length,
+            share: totalAmount ? (amount / totalAmount) * 100 : 0,
+          };
+        })
+        .filter(
+          (entry) =>
+            entry.committeeName &&
+            entry.committeeName !== "Unknown" &&
+            entry.committeeName !== "Unspecified Committee",
+        ),
+      ["amount", "count"],
+      ["desc", "desc"],
+    ).slice(0, 15);
+  }, [chartCommitteesDonations]);
 
   const topOrganizations = useMemo(
     () =>
@@ -2548,6 +2829,28 @@ function App() {
           </div>
 
           <div className="section-grid">
+            <div className="full-width">
+              <ChartCard
+                title="Donor Party Methodology"
+                subtitle="Proposed donor-cycle rule set for labeling a donor as Democrat, Republican, or Other / corporate from campaign, PAC, and committee giving."
+                source="Method note: intended for transparent behavioral labeling, not ideological profiling."
+              >
+                <div className="methodology-list">
+                  {DONOR_LABEL_METHOD.map((item) => (
+                    <div className="methodology-item" key={item.step}>
+                      <p className="methodology-step">{item.step}</p>
+                      <p className="methodology-copy">{item.copy}</p>
+                    </div>
+                  ))}
+                  <p className="methodology-note">
+                    This is a cycle-level behavior label, not a statement of identity or
+                    ideology. Mixed, bipartisan, trade-association, corporate, and unresolved
+                    giving stays in Other / corporate unless a clear partisan majority exists.
+                  </p>
+                </div>
+              </ChartCard>
+            </div>
+
             <ChartCard
               title="Donations by Party"
               subtitle="Total matched contributions grouped by recipient party affiliation."
@@ -2656,6 +2959,75 @@ function App() {
                   </div>
                 ) : (
                   <EmptyPanel copy="No presidential candidate donations found under the current filters." />
+                )}
+              </ChartCard>
+            </div>
+
+            <div className="full-width">
+              <ChartCard
+                title="Top Recipient Committees"
+                subtitle="Largest recipient committees under the active filters, classified across campaigns, PACs, party committees, joint funds, and conduits."
+                controls={
+                  <>
+                    <button
+                      type="button"
+                      className={`chart-chip ${!includeConduits ? "active" : ""}`}
+                      onClick={() => setIncludeConduits(false)}
+                    >
+                      Exclude ACTBLUE / WINRED
+                    </button>
+                    <button
+                      type="button"
+                      className={`chart-chip ${includeConduits ? "active" : ""}`}
+                      onClick={() => setIncludeConduits(true)}
+                    >
+                      Include conduits
+                    </button>
+                  </>
+                }
+              >
+                {topRecipientList.length ? (
+                  <div className="recipient-list">
+                    {topRecipientList.map((entry, index) => (
+                      <div className="recipient-row" key={entry.committeeName}>
+                        <div className="recipient-rank">{String(index + 1).padStart(2, "0")}</div>
+                        <div className="recipient-head">
+                          <p className="recipient-name">{entry.committeeName}</p>
+                          <p className="recipient-meta">
+                            {formatPercent(entry.share)} of recipient dollars under the current filters
+                          </p>
+                        </div>
+                        <p className="recipient-type">{entry.recipientType}</p>
+                        <span
+                          className={`recipient-badge party-${entry.party.toLowerCase()}`}
+                        >
+                          {PARTY_LABELS[entry.party] || PARTY_LABELS.OTH}
+                        </span>
+                        <div className="recipient-metrics">
+                          <div className="recipient-metric">
+                            <span className="recipient-metric-label">Total</span>
+                            <span className="recipient-metric-value">
+                              {formatCurrency(entry.amount)}
+                            </span>
+                          </div>
+                          <div className="recipient-metric">
+                            <span className="recipient-metric-label">Donors</span>
+                            <span className="recipient-metric-value">
+                              {formatCount(entry.donorCount)}
+                            </span>
+                          </div>
+                          <div className="recipient-metric">
+                            <span className="recipient-metric-label">Gifts</span>
+                            <span className="recipient-metric-value">
+                              {formatCount(entry.count)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyPanel copy="No recipient committees match the current filters." />
                 )}
               </ChartCard>
             </div>

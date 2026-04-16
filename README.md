@@ -29,7 +29,7 @@ The published dashboard currently ships with:
 - `docs/data/states-10m.json`
   - US state topology for the choropleth map
 
-The underlying NASEM member lists were scraped on `2026-04-14`, and the bundled dashboard data was normalized from the current local lookup outputs for browser use. The source `outputs/nasem_fec_donations.csv` file used for this refresh contained 94,433 raw matched rows before the dashboard normalization step collapsed duplicate transaction matches.
+The underlying NASEM member lists were scraped on `2026-04-14`, and the bundled dashboard data was normalized from the current local lookup snapshot in `nasem-dashboard/outputs/` for browser use. The preparation step still collapses duplicate transaction matches before publishing the browser-facing CSV bundle.
 
 ## What The Dashboard Contains
 
@@ -43,6 +43,8 @@ The underlying NASEM member lists were scraped on `2026-04-14`, and the bundled 
   - academy comparison across several metrics
   - top committees
   - top organizations
+  - donor-party methodology guidance for cycle-level labels
+  - top recipient committee rankings across campaigns, PACs, joint funds, party committees, and conduits
   - contributor-state choropleth
 - searchable, sortable member detail table
 
@@ -114,6 +116,18 @@ Relevant source snapshot files in `nasem-dashboard/` include:
 - `scripts/prepare_dashboard_data.py`
 - `public/data/nasem_fec_summary.csv`
 - `public/data/nasem_fec_donations.csv`
+
+## Donor Party Methodology
+
+The branch now includes an explicit cycle-level methodology for labeling a donor as `Dem`, `Rep`, or `Other / corporate`.
+
+1. Group each donor's matched contributions within a two-year election cycle.
+2. Resolve the political recipient from the recorded committee, using earmark targets when they are available.
+3. Label each recipient committee as `DEM`, `REP`, or `OTH` from committee or candidate party data.
+4. Sum dollars, not just contribution counts, into those party buckets.
+5. Label the donor-cycle `Dem` when Democratic dollars are at least two-thirds of identifiable partisan dollars and at least double Republican dollars; apply the mirror rule for `Rep`; otherwise keep the donor-cycle in `Other / corporate`.
+
+This is a behavioral label for a specific cycle, not a permanent ideological label. Mixed, bipartisan, trade-association, corporate, and unresolved giving stays in `Other / corporate` unless a clear partisan majority exists.
 
 ## Notes
 

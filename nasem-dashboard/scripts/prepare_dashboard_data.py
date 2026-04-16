@@ -9,8 +9,8 @@ from urllib.parse import quote_plus
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_SUMMARY = ROOT / "outputs" / "nasem_fec_summary.csv"
-SOURCE_DONATIONS = ROOT / "outputs" / "nasem_fec_donations.csv"
+SOURCE_SUMMARY = ROOT / "outputs" / "4.15.nasem_fec_summary.csv"
+SOURCE_DONATIONS = ROOT / "outputs" / "4.15.nasem_fec_donations_high_confidence.csv"
 COMMITTEE_LOOKUP = ROOT / "outputs" / "committee_lookup.json"
 MEMBER_DIRECTORY = ROOT / "nasem_living_members_nas_nae_nam_2026-04-14.csv"
 OUT_DIR = ROOT / "public" / "data"
@@ -125,17 +125,17 @@ def normalize_summary_rows(
             continue
 
         member = members.get(name, {})
-        total_donations = int(parse_float(row.get("total_donations") or row.get("total_records")))
         high_conf_donations = int(
             parse_float(
                 row.get("high_confidence_donations") or row.get("high_conf_records")
             )
         )
-        total_amount = parse_float(row.get("total_amount"))
         high_conf_amount = parse_float(
             row.get("high_confidence_amount") or row.get("high_conf_amount")
         )
 
+        # Use high-confidence figures for both total and high-conf columns so
+        # the dashboard never displays inflated low/medium-confidence totals.
         normalized.append(
             {
                 "name": name,
@@ -145,13 +145,10 @@ def normalize_summary_rows(
                     row.get("organization") or member.get("organization") or ""
                 ).strip(),
                 "state": (row.get("state") or member.get("state") or "").strip(),
-                "has_fec_donations": str(
-                    parse_bool(row.get("has_fec_donations") or row.get("has_fec_records"))
-                    or total_donations > 0
-                ),
-                "total_donations": str(total_donations),
+                "has_fec_donations": str(high_conf_donations > 0),
+                "total_donations": str(high_conf_donations),
                 "high_confidence_donations": str(high_conf_donations),
-                "total_amount": format_money(total_amount),
+                "total_amount": format_money(high_conf_amount),
                 "high_confidence_amount": format_money(high_conf_amount),
                 "profile_url": (
                     row.get("profile_url") or member.get("profile_url") or ""
@@ -233,6 +230,8 @@ def normalize_donation_rows(
             party = earmark_info.get("party", "")
         party = normalize_party(party)
 
+        transaction_id = (row.get("transaction_id") or "").strip()
+
         normalized.append(
             {
                 "nasem_name": nasem_name,
@@ -266,37 +265,44 @@ def normalize_donation_rows(
                 "fec_link": (
                     row.get("fec_link") or make_fec_search_link(contributor_name)
                 ).strip(),
+                "_transaction_id": transaction_id,
             }
         )
 
-    # Deduplicate: same contributor + committee + date + amount = same transaction.
-    # Multi-academy members (e.g. D.E. Shaw in NAS+NAE) and duplicate search
-    # variants produce duplicate rows for the same real-world contribution.
-    # Keep one row per transaction, merging academies when needed.
-    seen: dict[tuple, int] = {}
+    # Deduplicate by FEC transaction_id when available, falling back to a
+    # composite key.  Multi-academy members (e.g. D.E. Shaw in NAS+NAE) and
+    # duplicate search variants produce duplicate rows for the same real-world
+    # contribution.  Keep one row per transaction, merging academies.
+    seen: dict[str | tuple, int] = {}
     deduped: list[dict[str, str]] = []
     dupes_removed = 0
     for row in normalized:
-        key = (
-            row["contributor_name"],
-            row["committee_id"],
-            row["contribution_receipt_date"],
-            row["contribution_receipt_amount"],
-        )
+        tid = row.get("_transaction_id", "")
+        if tid:
+            key: str | tuple = tid
+        else:
+            key = (
+                row["contributor_name"],
+                row["committee_id"],
+                row["contribution_receipt_date"],
+                row["contribution_receipt_amount"],
+            )
         if key in seen:
             dupes_removed += 1
-            # If the duplicate is from a different academy, note it
             existing = deduped[seen[key]]
             if row["academy"] and row["academy"] not in existing["academy"]:
                 existing["academy"] = ",".join(
                     sorted(set(existing["academy"].split(",") + [row["academy"]]))
                 )
-            # Keep higher confidence if available
             if row["match_confidence"] == "high" and existing["match_confidence"] != "high":
                 existing["match_confidence"] = "high"
         else:
             seen[key] = len(deduped)
             deduped.append(row)
+
+    # Strip internal-only field before output
+    for row in deduped:
+        row.pop("_transaction_id", None)
 
     if dupes_removed:
         print(f"  Deduplicated: removed {dupes_removed:,} duplicate transaction rows")
