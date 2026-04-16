@@ -1043,6 +1043,14 @@ function truncateLabel(value, maxLength) {
   return _.truncate(value || "Unspecified", { length: maxLength, omission: "…" });
 }
 
+function tokenizeSearchText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
 function isConduitCommittee(name) {
   const upper = String(name ?? "").toUpperCase();
   return ALL_COMMITTEE_CONDUITS.some((needle) => upper.includes(needle));
@@ -2092,15 +2100,15 @@ function App() {
   }, [filteredDonations]);
 
   const searchableRows = useMemo(() => {
-    const query = deferredSearch.trim().toLowerCase();
+    const queryTokens = tokenizeSearchText(deferredSearch);
     const rows = donorRows.filter((row) => {
-      if (!query) {
+      if (!queryTokens.length) {
         return true;
       }
-      return [row.name, row.organization, row.state]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
+      const rowTokens = tokenizeSearchText([row.name, row.organization, row.state].join(" "));
+      return queryTokens.every((token) =>
+        rowTokens.some((rowToken) => rowToken.includes(token)),
+      );
     });
 
     return _.orderBy(
